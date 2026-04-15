@@ -60,6 +60,8 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 .hl-word{background:var(--hl-word);border-radius:2px}
 .hl-bkt{background:var(--hl-bkt);border-radius:2px;font-weight:bold}
 .hl-ph{color:var(--tx2)}
+.hl-open{color:#C2185B}
+.dark .hl-open{color:#F48FB1}
 #out-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg0)}
 #workspace.stacked #out-panel{height:220px;flex-shrink:0}
 #workspace.side #out-panel{width:300px;flex-shrink:0}
@@ -104,6 +106,9 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 #rename-ok:hover{background:var(--blue2)}
 #rename-cancel{background:var(--bg0);color:var(--tx1);border:1px solid var(--bd)}
 #rename-cancel:hover{background:var(--bg2)}
+#tip{display:none;position:fixed;background:#FFFFC0;border:1px solid #C8C000;border-radius:6px;padding:7px 11px;font-family:var(--mono);font-size:12px;line-height:1.6;color:#1a1a18;max-width:440px;z-index:200;box-shadow:2px 3px 8px rgba(0,0,0,.18);pointer-events:none}
+#tip .tip-sig{font-weight:700;color:#0057AE;margin-bottom:2px}
+#tip .tip-doc{color:#333;white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -155,6 +160,8 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 
 <div id="toast">Paste disabled - type your own code</div>
 
+<div id="tip"></div>
+
 <div id="rename-overlay">
   <div id="rename-box">
     <label>File name</label>
@@ -204,6 +211,100 @@ const BI = new Set(['print','input','int','float','str','bool','len','range',
   'classmethod','Exception','ValueError','TypeError','IndexError','KeyError',
   'AttributeError','NameError','StopIteration','RuntimeError','print']);
 
+const SIGNATURES = {
+  print:      {sig:"print(*objects, sep=' ', end='\\n')",          doc:"Print to the output.\nsep goes between items, end goes at the finish (default: new line)."},
+  input:      {sig:"input(prompt='')",                             doc:"Ask the user to type something.\nAlways returns a string — use int() or float() to convert."},
+  int:        {sig:"int(x)",                                       doc:"Convert x to a whole number.\ne.g. int('42') → 42,  int(3.9) → 3"},
+  float:      {sig:"float(x)",                                     doc:"Convert x to a decimal number.\ne.g. float('3.14') → 3.14"},
+  str:        {sig:"str(x)",                                       doc:"Convert x to text.\ne.g. str(42) → '42'"},
+  bool:       {sig:"bool(x)",                                      doc:"Convert x to True or False.\n0, '', None, and empty lists are False. Everything else is True."},
+  len:        {sig:"len(sequence)",                                doc:"Return the number of items.\nWorks on strings, lists, tuples, dicts…"},
+  range:      {sig:"range(stop)  or  range(start, stop, step)",   doc:"Generate a sequence of numbers.\ne.g. range(5) → 0 1 2 3 4,  range(1, 10, 2) → 1 3 5 7 9"},
+  list:       {sig:"list(iterable)",                               doc:"Create a list from any iterable.\ne.g. list(range(3)) → [0, 1, 2]"},
+  dict:       {sig:"dict(key=value, ...)",                         doc:"Create a dictionary of key→value pairs."},
+  tuple:      {sig:"tuple(iterable)",                              doc:"Create an immutable tuple from any iterable."},
+  set:        {sig:"set(iterable)",                                doc:"Create a set — unique items only, no duplicates."},
+  abs:        {sig:"abs(x)",                                       doc:"Return the absolute (positive) value of x.\ne.g. abs(-5) → 5"},
+  max:        {sig:"max(iterable)  or  max(a, b, ...)",            doc:"Return the largest item."},
+  min:        {sig:"min(iterable)  or  min(a, b, ...)",            doc:"Return the smallest item."},
+  sum:        {sig:"sum(iterable)",                                doc:"Add up all items in the iterable."},
+  round:      {sig:"round(number, ndigits=0)",                     doc:"Round a number.\ne.g. round(3.14159, 2) → 3.14"},
+  sorted:     {sig:"sorted(iterable, reverse=False)",              doc:"Return a new sorted list.\nPass reverse=True to sort largest-first."},
+  reversed:   {sig:"reversed(sequence)",                           doc:"Return items in reverse order."},
+  enumerate:  {sig:"enumerate(iterable, start=0)",                 doc:"Return (index, value) pairs.\nUseful in for loops: for i, v in enumerate(my_list)"},
+  zip:        {sig:"zip(*iterables)",                              doc:"Pair up items from multiple iterables.\ne.g. zip([1,2], ['a','b']) → (1,'a'), (2,'b')"},
+  type:       {sig:"type(x)",                                      doc:"Return the type of x.\ne.g. type(42) → <class 'int'>"},
+  isinstance: {sig:"isinstance(x, classinfo)",                     doc:"Return True if x is an instance of classinfo.\ne.g. isinstance(42, int) → True"},
+  open:       {sig:"open(file, mode='r')",                         doc:"Open a file. mode: 'r'=read, 'w'=write, 'a'=append.\nUse with a 'with' statement."},
+  pow:        {sig:"pow(base, exp)",                               doc:"Return base raised to the power exp.\nSame as base ** exp."},
+  divmod:     {sig:"divmod(a, b)",                                 doc:"Return (quotient, remainder) as a tuple.\ne.g. divmod(10, 3) → (3, 1)"},
+  chr:        {sig:"chr(i)",                                       doc:"Return the character for Unicode code point i.\ne.g. chr(65) → 'A'"},
+  ord:        {sig:"ord(c)",                                       doc:"Return the Unicode code point for character c.\ne.g. ord('A') → 65"},
+  format:     {sig:"format(value, format_spec='')",                doc:"Format a value as a string.\ne.g. format(3.14159, '.2f') → '3.14'"},
+  repr:       {sig:"repr(x)",                                      doc:"Return a developer-readable string of x."},
+  map:        {sig:"map(function, iterable)",                      doc:"Apply function to every item.\ne.g. list(map(int, ['1','2','3'])) → [1, 2, 3]"},
+  filter:     {sig:"filter(function, iterable)",                   doc:"Keep items where function returns True.\ne.g. list(filter(lambda x: x>0, [-1,2,-3,4])) → [2, 4]"},
+};
+
+let _tipCharWidth=null;
+function tipCharWidth(){
+  if(_tipCharWidth) return _tipCharWidth;
+  const s=document.createElement('span');
+  s.style.cssText='font-family:Courier New,monospace;font-size:13px;position:absolute;visibility:hidden;white-space:pre';
+  s.textContent='x'.repeat(20);
+  document.body.appendChild(s);
+  _tipCharWidth=s.offsetWidth/20;
+  document.body.removeChild(s);
+  return _tipCharWidth;
+}
+
+const tipEl=document.getElementById('tip');
+
+function showTip(name, x, y){
+  const info=SIGNATURES[name];
+  if(!info){hideTip();return;}
+  tipEl.innerHTML=`<div class="tip-sig">${escHtml(info.sig)}</div><div class="tip-doc">${escHtml(info.doc)}</div>`;
+  tipEl.style.display='block';
+  tipEl.style.left='0px'; tipEl.style.top='0px';
+  const tw=tipEl.offsetWidth, th=tipEl.offsetHeight;
+  const vw=window.innerWidth, vh=window.innerHeight;
+  let tx=Math.min(x, vw-tw-10);
+  let ty=y+6;
+  if(ty+th>vh-10) ty=y-th-6;
+  tipEl.style.left=Math.max(4,tx)+'px';
+  tipEl.style.top=ty+'px';
+}
+
+function hideTip(){tipEl.style.display='none';}
+
+function checkTip(){
+  const pos=editor.selectionStart;
+  const text=editor.value;
+  let depth=0;
+  for(let i=pos-1;i>=0;i--){
+    const c=text[i];
+    if(c===')') depth++;
+    else if(c==='('){
+      if(depth===0){
+        let j=i-1;
+        while(j>=0&&/\w/.test(text[j])) j--;
+        const word=text.slice(j+1,i);
+        if(SIGNATURES[word]){
+          const lines=text.slice(0,pos).split('\n');
+          const line=lines.length-1;
+          const col=lines[line].length;
+          const wr=edWrap.getBoundingClientRect();
+          const x=wr.left+10+col*tipCharWidth()-edWrap.scrollLeft;
+          const y=wr.top+10+(line+1)*21-edWrap.scrollTop;
+          showTip(word, x, y);
+          return;
+        }
+      } else depth--;
+    }
+  }
+  hideTip();
+}
+
 function escHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -223,13 +324,13 @@ function tokenize(code){
     if(i+2<code.length){
       const q3=code.slice(i,i+3);
       if(q3==='"""'||q3==="'''"){
-        let j=i+3;
+        let j=i+3,closed=false;
         while(j<=code.length-3){
-          if(code.slice(j,j+3)===q3){j+=3;break;}
+          if(code.slice(j,j+3)===q3){j+=3;closed=true;break;}
           j++;
         }
-        if(j>code.length-3) j=code.length;
-        toks.push({s:i,e:j,t:'str'});
+        if(!closed) j=code.length;
+        toks.push({s:i,e:j,t:closed?'str':'str-open'});
         i=j; continue;
       }
     }
@@ -241,8 +342,9 @@ function tokenize(code){
         if(code[j]==='\\') j++;
         j++;
       }
-      toks.push({s:i,e:j+1,t:'str'});
-      i=j+1; continue;
+      const closed=j<code.length&&code[j]===q;
+      toks.push({s:i,e:closed?j+1:j,t:closed?'str':'str-open'});
+      i=closed?j+1:j; continue;
     }
     // number
     if(/[0-9]/.test(code[i])||(code[i]==='.'&&i+1<code.length&&/[0-9]/.test(code[i+1]))){
@@ -305,7 +407,7 @@ function buildHighlight(code, cursor){
     }
   }
 
-  // bracket match
+  // bracket match (must run before we mutate tok.t below)
   let bktA=-1,bktB=-1;
   if(cursor>=0){
     const opens='([{',closes=')]}';
@@ -321,13 +423,27 @@ function buildHighlight(code, cursor){
     }
   }
 
+  // mark unmatched open brackets as 'bkt-open' (pink)
+  const bktStack=[];
+  for(let i=0;i<toks.length;i++){
+    if(toks[i].t==='bkt'){
+      if('([{'.includes(code[toks[i].s])) bktStack.push(i);
+      else if(bktStack.length>0) bktStack.pop();
+    }
+  }
+  for(const i of bktStack) toks[i].t='bkt-open';
+
   let html='';
   for(const tok of toks){
     const txt=code.slice(tok.s,tok.e);
     const esc=escHtml(txt);
-    if(tok.t==='bkt'){
+    if(tok.t==='bkt-open'){
+      html+=`<span class="hl-open">${esc}</span>`;
+    } else if(tok.t==='bkt'){
       if(tok.s===bktA||tok.s===bktB) html+=`<span class="hl-bkt">${esc}</span>`;
       else html+=esc;
+    } else if(tok.t==='str-open'){
+      html+=`<span class="hl-open">${esc}</span>`;
     } else if(tok.t==='id'&&hlWord&&txt===hlWord){
       html+=`<span class="hl-word">${esc}</span>`;
     } else if(tok.t==='kw'){
@@ -547,7 +663,8 @@ editor.addEventListener('keydown',e=>{
 });
 
 // update bracket match and word highlight on cursor move
-editor.addEventListener('keyup',()=>updateHighlight());
+editor.addEventListener('keyup',()=>{updateHighlight();checkTip();});
+editor.addEventListener('click',()=>checkTip());
 editor.addEventListener('click',()=>updateHighlight());
 editor.addEventListener('focus',()=>updateHighlight());
 editor.addEventListener('blur',()=>updateHighlight());
@@ -562,7 +679,18 @@ editor.addEventListener('paste',e=>{
   }
 });
 
-editor.addEventListener('contextmenu',e=>e.preventDefault());
+editor.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  const pos=editor.selectionStart;
+  const text=editor.value;
+  let ws=pos,we=pos;
+  while(ws>0&&/\w/.test(text[ws-1])) ws--;
+  while(we<text.length&&/\w/.test(text[we])) we++;
+  const word=text.slice(ws,we);
+  if(SIGNATURES[word]) showTip(word,e.clientX,e.clientY+20);
+  else hideTip();
+});
+document.addEventListener('click',e=>{if(e.target!==editor) hideTip();});
 
 // ── Output / input ────────────────────────────────────────────────────────────
 
