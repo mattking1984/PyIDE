@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyIDE</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg0:#ffffff;--bg1:#f5f5f3;--bg2:#e8e8e4;
+  --tx0:#1a1a18;--tx1:#444441;--tx2:#888780;
+  --bd:#c8c7c0;--bd2:#aaa9a0;
+  --green:#1D9E75;--green2:#0F6E56;
+  --blue:#185FA5;--blue2:#0C447C;
+  --red:#D85A30;--red2:#993C1D;
+  --amber:#BA7517;
+  --mono:'Courier New',monospace;
+}
+.dark{
+  --bg0:#1a1a18;--bg1:#242422;--bg2:#2e2e2b;
+  --tx0:#e8e8e4;--tx1:#a8a8a2;--tx2:#66665e;
+  --bd:#3a3a36;--bd2:#4a4a46;
+}
+html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
+#app{display:flex;flex-direction:column;height:100vh;background:var(--bg0);color:var(--tx0)}
+#toolbar{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--bg1);border-bottom:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap}
+.tl-title{font-size:13px;font-weight:500;color:var(--tx0);flex:1;min-width:80px}
+.tl-btn{background:var(--bg0);color:var(--tx0);border:1px solid var(--bd);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.tl-btn:hover{background:var(--bg2);border-color:var(--bd2)}
+.tl-btn.on{background:var(--bg2);border-color:var(--bd2);font-weight:500}
+#run-btn{background:var(--green);color:#fff;border:none;border-radius:7px;padding:5px 14px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
+#run-btn:hover{background:var(--green2)}
+#run-btn:disabled{background:var(--bg2);color:var(--tx2);border:1px solid var(--bd);cursor:default}
+#stop-btn{background:var(--red2);color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;font-family:inherit;display:none}
+#stop-btn:hover{background:#4A1B0C}
+#workspace{display:flex;flex:1;overflow:hidden}
+#workspace.stacked{flex-direction:column}
+#workspace.side{flex-direction:row}
+#ed-panel{display:flex;flex-direction:column;overflow:hidden;flex:1}
+#workspace.stacked #ed-panel{border-bottom:1px solid var(--bd)}
+#workspace.side #ed-panel{border-right:1px solid var(--bd)}
+#ed-row{display:flex;flex:1;overflow:auto}
+#lnum{padding:10px 0;background:var(--bg1);min-width:36px;flex-shrink:0;overflow:hidden;border-right:1px solid var(--bd);user-select:none}
+.ln{font-family:var(--mono);font-size:13px;color:var(--tx2);text-align:right;padding:0 7px;line-height:21px}
+#editor{flex:1;font-family:var(--mono);font-size:13px;line-height:21px;padding:10px;border:none;outline:none;resize:none;background:var(--bg0);color:var(--tx0);tab-size:4;-webkit-user-select:text}
+#editor::placeholder{color:var(--tx2)}
+#out-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg0)}
+#workspace.stacked #out-panel{height:220px;flex-shrink:0}
+#workspace.side #out-panel{width:300px;flex-shrink:0}
+#out-hdr{display:flex;align-items:center;padding:6px 10px;background:var(--bg1);border-bottom:1px solid var(--bd);flex-shrink:0}
+#out-hdr span{font-size:11px;font-weight:500;color:var(--tx1);text-transform:uppercase;letter-spacing:.05em;flex:1}
+#clr-out{font-size:11px;color:var(--tx1);cursor:pointer;background:var(--bg0);border:1px solid var(--bd);border-radius:5px;font-family:inherit;padding:2px 8px}
+#clr-out:hover{background:var(--bg2);color:var(--tx0)}
+#out-body{flex:1;overflow-y:auto;padding:10px 12px;font-family:var(--mono);font-size:13px;line-height:1.7}
+.o{display:inline;white-space:pre-wrap;word-break:break-word;color:var(--tx0)}
+.o.err{color:var(--red)}
+.o.prompt{color:var(--blue)}
+.inline-inp{font-family:var(--mono);font-size:13px;line-height:1.7;border:none;border-bottom:1px solid var(--tx2);outline:none;background:transparent;color:var(--tx0);padding:0;margin:0;min-width:8ch;vertical-align:baseline;-webkit-user-select:text}
+#files-panel{display:none;flex-direction:column;border-right:1px solid var(--bd);width:180px;flex-shrink:0;background:var(--bg1);overflow:hidden}
+#files-hdr{display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid var(--bd);flex-shrink:0}
+#files-hdr span{font-size:11px;font-weight:500;color:var(--tx1);text-transform:uppercase;letter-spacing:.05em;flex:1}
+#new-file-btn{font-size:20px;line-height:1;color:var(--green);cursor:pointer;background:none;border:none;padding:0 2px;font-weight:500}
+#files-list{flex:1;overflow-y:auto;padding:4px}
+.file-item{display:flex;align-items:center;padding:6px 8px;border-radius:6px;cursor:pointer;gap:6px;margin-bottom:2px;border:1px solid transparent}
+.file-item:hover{background:var(--bg2)}
+.file-item.active{background:var(--bg2);border-color:var(--bd)}
+.fi-name{font-size:13px;color:var(--tx0);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.fi-del{font-size:13px;color:var(--tx2);cursor:pointer;background:none;border:none;padding:0;line-height:1;flex-shrink:0}
+.fi-del:hover{color:var(--red)}
+#no-files{font-size:12px;color:var(--tx2);padding:10px 8px;font-style:italic}
+#statusbar{display:flex;align-items:center;gap:6px;padding:4px 12px;background:var(--bg1);border-top:1px solid var(--bd);flex-shrink:0}
+#sdot{width:7px;height:7px;border-radius:50%;background:var(--tx2);flex-shrink:0}
+#sdot.ready{background:var(--green)}
+#sdot.running{background:var(--amber)}
+#sdot.error{background:var(--red)}
+#smsg{font-size:11px;color:var(--tx2)}
+#toast{position:fixed;bottom:48px;left:50%;transform:translateX(-50%);background:#FAECE7;color:var(--red2);border:1px solid var(--red);border-radius:7px;padding:6px 14px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .2s;z-index:20;white-space:nowrap}
+#toast.show{opacity:1}
+#rename-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;z-index:30}
+#rename-overlay.show{display:flex}
+#rename-box{background:var(--bg0);border:1px solid var(--bd2);border-radius:10px;padding:16px;width:280px;display:flex;flex-direction:column;gap:10px}
+#rename-box label{font-size:13px;color:var(--tx0);font-weight:500}
+#rename-input{font-size:13px;border:1px solid var(--bd2);border-radius:6px;padding:6px 8px;background:var(--bg0);color:var(--tx0);outline:none;font-family:inherit}
+#rename-input:focus{border-color:var(--blue)}
+#rename-btns{display:flex;gap:8px;justify-content:flex-end}
+.rb{border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+#rename-ok{background:var(--blue);color:#fff;border:none}
+#rename-ok:hover{background:var(--blue2)}
+#rename-cancel{background:var(--bg0);color:var(--tx1);border:1px solid var(--bd)}
+#rename-cancel:hover{background:var(--bg2)}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <span class="tl-title">PyIDE</span>
+    <button class="tl-btn" id="btn-files" onclick="toggleFiles()">Files</button>
+    <button class="tl-btn on" id="btn-stack" onclick="setLayout('stacked')">Stacked</button>
+    <button class="tl-btn" id="btn-side" onclick="setLayout('side')">Side by side</button>
+    <button class="tl-btn" id="btn-dark" onclick="toggleDark()">Dark</button>
+    <button class="tl-btn" onclick="exportFile()">Export .py</button>
+    <button id="stop-btn" onclick="stopCode()">Stop</button>
+    <button id="run-btn" disabled onclick="runCode()">Loading...</button>
+  </div>
+
+  <div id="workspace" class="stacked" style="position:relative">
+    <div id="files-panel">
+      <div id="files-hdr">
+        <span>My files</span>
+        <button id="new-file-btn" onclick="newFile()" title="New file">+</button>
+      </div>
+      <div id="files-list"></div>
+    </div>
+
+    <div id="ed-panel">
+      <div id="ed-row">
+        <div id="lnum"><div class="ln">1</div></div>
+        <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="none" autocomplete="off" placeholder="# Start coding here...
+# Your work saves automatically."></textarea>
+      </div>
+    </div>
+
+    <div id="out-panel">
+      <div id="out-hdr">
+        <span>Output</span>
+        <button id="clr-out" onclick="clearOutput()">clear</button>
+      </div>
+      <div id="out-body"></div>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <span id="sdot"></span>
+    <span id="smsg">Loading Python runtime...</span>
+  </div>
+</div>
+
+<div id="toast">Paste disabled - type your own code</div>
+
+<div id="rename-overlay">
+  <div id="rename-box">
+    <label>File name</label>
+    <input id="rename-input" type="text" maxlength="40"/>
+    <div id="rename-btns">
+      <button class="rb" id="rename-cancel" onclick="closeRename()">Cancel</button>
+      <button class="rb" id="rename-ok" onclick="confirmRename()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<script>
+let pyodide=null, inputResolve=null, running=false;
+let currentFile=null, renameTarget=null, dark=false, filesOpen=false;
+const STORE='pyide_files';
+
+const app=document.getElementById('app');
+const editor=document.getElementById('editor');
+const lnum=document.getElementById('lnum');
+const outBody=document.getElementById('out-body');
+const runBtn=document.getElementById('run-btn');
+const stopBtn=document.getElementById('stop-btn');
+const toast=document.getElementById('toast');
+const sdot=document.getElementById('sdot');
+const smsg=document.getElementById('smsg');
+const filesList=document.getElementById('files-list');
+const renameOverlay=document.getElementById('rename-overlay');
+const renameInput=document.getElementById('rename-input');
+const filesPanel=document.getElementById('files-panel');
+
+function setStatus(s,m){sdot.className=s;smsg.textContent=m}
+
+function applyButtonColors(){
+  const isDark=app.classList.contains('dark');
+  document.querySelectorAll('.tl-btn').forEach(btn=>{
+    btn.style.background=isDark?'#2e2e2b':'#ffffff';
+    btn.style.color=isDark?'#e8e8e4':'#1a1a18';
+    btn.style.borderColor=isDark?'#3a3a36':'#c8c7c0';
+  });
+  const c=document.getElementById('clr-out');
+  c.style.background=isDark?'#2e2e2b':'#ffffff';
+  c.style.color=isDark?'#a8a8a2':'#444441';
+  c.style.borderColor=isDark?'#3a3a36':'#c8c7c0';
+}
+
+function toggleDark(){
+  dark=!dark;
+  app.classList.toggle('dark',dark);
+  document.getElementById('btn-dark').textContent=dark?'Light':'Dark';
+  document.getElementById('btn-dark').classList.toggle('on',dark);
+  applyButtonColors();
+}
+
+function setLayout(m){
+  document.getElementById('workspace').className=m;
+  document.getElementById('btn-stack').classList.toggle('on',m==='stacked');
+  document.getElementById('btn-side').classList.toggle('on',m==='side');
+}
+
+function toggleFiles(){
+  filesOpen=!filesOpen;
+  filesPanel.style.display=filesOpen?'flex':'none';
+  document.getElementById('btn-files').classList.toggle('on',filesOpen);
+  if(filesOpen) renderFiles();
+}
+
+function getFiles(){try{return JSON.parse(localStorage.getItem(STORE)||'{}')}catch{return{}}}
+function saveFiles(f){localStorage.setItem(STORE,JSON.stringify(f))}
+function genId(){return 'f'+Date.now()}
+
+function loadFile(id){
+  const files=getFiles();
+  if(!files[id]) return;
+  currentFile=id;
+  editor.value=files[id].code||'';
+  updateLnum();
+  renderFiles();
+  clearOutput();
+}
+
+function saveCurrentCode(){
+  if(!currentFile) return;
+  const files=getFiles();
+  if(!files[currentFile]) return;
+  files[currentFile].code=editor.value;
+  files[currentFile].updated=Date.now();
+  saveFiles(files);
+}
+
+function newFile(){
+  const files=getFiles();
+  const id=genId();
+  const count=Object.keys(files).length+1;
+  files[id]={name:'program_'+count+'.py',code:'',created:Date.now(),updated:Date.now()};
+  saveFiles(files);
+  loadFile(id);
+}
+
+function deleteFile(id,e){
+  e.stopPropagation();
+  const files=getFiles();
+  delete files[id];
+  saveFiles(files);
+  if(currentFile===id){
+    currentFile=null;
+    editor.value='';
+    updateLnum();
+    clearOutput();
+    const remaining=Object.keys(files);
+    if(remaining.length) loadFile(remaining[remaining.length-1]);
+  }
+  renderFiles();
+}
+
+function openRename(id,e){
+  e.stopPropagation();
+  renameTarget=id;
+  const files=getFiles();
+  renameInput.value=files[id]?files[id].name.replace(/\.py$/,''):'';
+  renameOverlay.classList.add('show');
+  setTimeout(()=>renameInput.focus(),50);
+}
+
+function closeRename(){renameOverlay.classList.remove('show');renameTarget=null}
+
+function confirmRename(){
+  if(!renameTarget) return;
+  const files=getFiles();
+  if(!files[renameTarget]) return;
+  let name=renameInput.value.trim()||'untitled';
+  if(!name.endsWith('.py')) name+='.py';
+  files[renameTarget].name=name;
+  saveFiles(files);
+  renderFiles();
+  closeRename();
+}
+
+renameInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter') confirmRename();
+  if(e.key==='Escape') closeRename();
+});
+
+function renderFiles(){
+  const files=getFiles();
+  const keys=Object.keys(files).sort((a,b)=>(files[b].updated||0)-(files[a].updated||0));
+  if(!keys.length){
+    filesList.innerHTML='<div id="no-files">No files yet. Hit + to create one.</div>';
+    return;
+  }
+  filesList.innerHTML='';
+  keys.forEach(id=>{
+    const f=files[id];
+    const div=document.createElement('div');
+    div.className='file-item'+(id===currentFile?' active':'');
+    div.innerHTML=`<span class="fi-name" onclick="loadFile('${id}')">${f.name}</span><button class="fi-del" onclick="openRename('${id}',event)" title="Rename">&#9998;</button><button class="fi-del" onclick="deleteFile('${id}',event)" title="Delete">&#10005;</button>`;
+    filesList.appendChild(div);
+  });
+}
+
+let saveTimer=null;
+editor.addEventListener('input',()=>{
+  updateLnum();
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{
+    if(!currentFile){
+      const files=getFiles();
+      const id=genId();
+      files[id]={name:'program_1.py',code:editor.value,created:Date.now(),updated:Date.now()};
+      saveFiles(files);
+      currentFile=id;
+      if(filesOpen) renderFiles();
+    } else {
+      saveCurrentCode();
+      if(filesOpen) renderFiles();
+    }
+  },800);
+});
+
+editor.addEventListener('scroll',()=>{lnum.scrollTop=editor.scrollTop});
+
+editor.addEventListener('keydown',e=>{
+  if(e.key==='Tab'){
+    e.preventDefault();
+    const s=editor.selectionStart,en=editor.selectionEnd;
+    editor.value=editor.value.slice(0,s)+'    '+editor.value.slice(en);
+    editor.selectionStart=editor.selectionEnd=s+4;
+    updateLnum();
+  }
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter') runCode();
+});
+
+editor.addEventListener('paste',e=>{
+  const text=(e.clipboardData||window.clipboardData).getData('text');
+  const cur=editor.value;
+  if(text&&text.length>3&&!cur.includes(text.trim().slice(0,30))){
+    e.preventDefault();
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'),2000);
+  }
+});
+
+editor.addEventListener('contextmenu',e=>e.preventDefault());
+
+function updateLnum(){
+  const n=editor.value.split('\n').length;
+  lnum.innerHTML=Array.from({length:n},(_,i)=>`<div class="ln">${i+1}</div>`).join('');
+}
+
+function appendOut(text,cls){
+  if(!text) return;
+  const s=document.createElement('span');
+  s.className='o'+(cls?' '+cls:'');
+  s.textContent=text;
+  outBody.appendChild(s);
+  outBody.scrollTop=outBody.scrollHeight;
+}
+
+function clearOutput(){outBody.innerHTML=''}
+
+window._pyInput=function(prompt){
+  return new Promise(resolve=>{
+    inputResolve=resolve;
+    if(prompt) appendOut(prompt,'prompt');
+    const inp=document.createElement('input');
+    inp.type='text';
+    inp.className='inline-inp';
+    inp.autocorrect='off';
+    inp.autocapitalize='none';
+    inp.autocomplete='off';
+    inp.spellcheck=false;
+    outBody.appendChild(inp);
+    outBody.scrollTop=outBody.scrollHeight;
+    inp.focus();
+    inp.addEventListener('input',()=>{
+      inp.style.width=Math.max(8,inp.value.length+2)+'ch';
+    });
+    inp.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const val=inp.value;
+        inp.remove();
+        appendOut(val+'\n');
+        if(inputResolve){inputResolve(val);inputResolve=null}
+      }
+    });
+    inp.addEventListener('paste',e=>e.preventDefault());
+    inp.addEventListener('contextmenu',e=>e.preventDefault());
+  });
+};
+
+function stopCode(){
+  running=false;
+  const inp=outBody.querySelector('.inline-inp');
+  if(inp) inp.remove();
+  if(inputResolve){inputResolve('');inputResolve=null}
+  runBtn.style.display='';
+  stopBtn.style.display='none';
+  setStatus('ready','Stopped');
+}
+
+function exportFile(){
+  const name=currentFile?getFiles()[currentFile]?.name||'program.py':'program.py';
+  const blob=new Blob([editor.value],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function formatTraceback(raw){
+  return raw
+    .replace(/Traceback \(most recent call last\):\n/g,'')
+    .replace(/  File "<exec>", /g,'  ')
+    .replace(/  File "<string>", /g,'  ')
+    .replace(/  File "<student>", /g,'  ')
+    .trim();
+}
+
+async function runCode(){
+  if(!pyodide||running) return;
+  running=true;
+  clearOutput();
+  saveCurrentCode();
+  runBtn.style.display='none';
+  stopBtn.style.display='';
+  setStatus('running','Running...');
+
+  pyodide.globals.set('_out',(t)=>appendOut(t));
+  pyodide.globals.set('_err',(t)=>appendOut(t,'err'));
+  pyodide.globals.set('_pyInput',(p)=>window._pyInput(p));
+
+  try{
+    await pyodide.runPythonAsync(`
+import sys, io, builtins, js, ast
+
+class _Out(io.StringIO):
+    def write(self, s):
+        if s: _out(s)
+        return len(s)
+    def flush(self): pass
+
+class _Err(io.StringIO):
+    def write(self, s):
+        if s: _err(s)
+        return len(s)
+    def flush(self): pass
+
+sys.stdout = _Out()
+sys.stderr = _Err()
+
+async def _input(prompt=''):
+    val = await _pyInput(str(prompt))
+    return str(val)
+
+builtins.input = _input
+
+def _make_async(code_str):
+    tree = ast.parse(code_str)
+    func_deps = {}
+    input_callers = set()
+
+    class _Scan(ast.NodeVisitor):
+        def __init__(self):
+            self._stack = []
+        def visit_FunctionDef(self, node):
+            self._stack.append(node.name)
+            func_deps.setdefault(node.name, set())
+            self.generic_visit(node)
+            self._stack.pop()
+        visit_AsyncFunctionDef = visit_FunctionDef
+        def visit_Call(self, node):
+            if self._stack:
+                fn = self._stack[-1]
+                func_deps.setdefault(fn, set())
+                if isinstance(node.func, ast.Name):
+                    if node.func.id == 'input':
+                        input_callers.add(fn)
+                    else:
+                        func_deps[fn].add(node.func.id)
+            self.generic_visit(node)
+
+    _Scan().visit(tree)
+
+    needs_async = set(input_callers)
+    changed = True
+    while changed:
+        changed = False
+        for fn, deps in func_deps.items():
+            if fn not in needs_async and deps & needs_async:
+                needs_async.add(fn)
+                changed = True
+
+    class _Fix(ast.NodeTransformer):
+        def visit_FunctionDef(self, node):
+            self.generic_visit(node)
+            if node.name not in needs_async:
+                return node
+            new_node = ast.AsyncFunctionDef(
+                name=node.name, args=node.args, body=node.body,
+                decorator_list=node.decorator_list, returns=node.returns,
+                type_comment=getattr(node, 'type_comment', None)
+            )
+            return ast.copy_location(new_node, node)
+        def visit_Call(self, node):
+            self.generic_visit(node)
+            if isinstance(node.func, ast.Name) and (
+                    node.func.id == 'input' or node.func.id in needs_async):
+                return ast.copy_location(ast.Await(value=node), node)
+            return node
+
+    fixed = _Fix().visit(tree)
+    wrapper = ast.parse("async def _main(): pass")
+    wrapper.body[0].body = fixed.body or [ast.Pass()]
+    ast.fix_missing_locations(wrapper)
+    return compile(wrapper, "<student>", "exec")
+`);
+  }catch(err){
+    appendOut('Internal error: '+String(err)+'\n','err');
+    setStatus('error','Error');
+    running=false;
+    runBtn.style.display='';
+    stopBtn.style.display='none';
+    return;
+  }
+
+  try{
+    pyodide.globals.set('_student_code', editor.value);
+    await pyodide.runPythonAsync(`
+_code_obj = _make_async(_student_code)
+exec(_code_obj)
+await _main()
+`);
+  }catch(err){
+    const msg=formatTraceback(String(err));
+    appendOut(msg+'\n','err');
+    setStatus('error','Error');
+    running=false;
+    runBtn.style.display='';
+    stopBtn.style.display='none';
+    const inp=outBody.querySelector('.inline-inp');
+    if(inp) inp.remove();
+    return;
+  }
+
+  if(running){
+    setStatus('ready','Done');
+    running=false;
+    runBtn.style.display='';
+    stopBtn.style.display='none';
+  }
+}
+
+(async()=>{
+  try{
+    pyodide=await loadPyodide();
+    runBtn.textContent='Run \u25B6';
+    runBtn.disabled=false;
+    setStatus('ready','Python 3.11 ready');
+    updateLnum();
+    const files=getFiles();
+    const keys=Object.keys(files);
+    if(keys.length){
+      const latest=keys.sort((a,b)=>(files[b].updated||0)-(files[a].updated||0))[0];
+      loadFile(latest);
+    }
+  }catch(e){
+    setStatus('error','Failed to load runtime');
+    appendOut('Could not load Python. Check your connection and refresh.\n','err');
+  }
+})();
+</script>
+</body>
+</html>
