@@ -15,11 +15,17 @@
   --red:#D85A30;--red2:#993C1D;
   --amber:#BA7517;
   --mono:'Courier New',monospace;
+  --hl-kw:#8B0000;--hl-bi:#0057AE;--hl-str:#007272;
+  --hl-num:#C65D09;--hl-cmt:#737373;
+  --hl-word:rgba(100,100,220,0.15);--hl-bkt:rgba(255,170,0,0.4);
 }
 .dark{
   --bg0:#1a1a18;--bg1:#242422;--bg2:#2e2e2b;
   --tx0:#e8e8e4;--tx1:#a8a8a2;--tx2:#66665e;
   --bd:#3a3a36;--bd2:#4a4a46;
+  --hl-kw:#FF8080;--hl-bi:#6BB5FF;--hl-str:#7EC8A0;
+  --hl-num:#FFB347;--hl-cmt:#888888;
+  --hl-word:rgba(100,100,220,0.25);--hl-bkt:rgba(255,170,0,0.3);
 }
 html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 #app{display:flex;flex-direction:column;height:100vh;background:var(--bg0);color:var(--tx0)}
@@ -39,11 +45,21 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 #ed-panel{display:flex;flex-direction:column;overflow:hidden;flex:1}
 #workspace.stacked #ed-panel{border-bottom:1px solid var(--bd)}
 #workspace.side #ed-panel{border-right:1px solid var(--bd)}
-#ed-row{display:flex;flex:1;overflow:auto}
+#ed-row{display:flex;flex:1;overflow:hidden}
 #lnum{padding:10px 0;background:var(--bg1);min-width:36px;flex-shrink:0;overflow:hidden;border-right:1px solid var(--bd);user-select:none}
 .ln{font-family:var(--mono);font-size:13px;color:var(--tx2);text-align:right;padding:0 7px;line-height:21px}
-#editor{flex:1;font-family:var(--mono);font-size:13px;line-height:21px;padding:10px;border:none;outline:none;resize:none;background:var(--bg0);color:var(--tx0);tab-size:4;-webkit-user-select:text}
-#editor::placeholder{color:var(--tx2)}
+#ed-wrap{position:relative;flex:1;overflow:auto}
+#highlight{position:relative;display:block;min-width:100%;padding:10px;margin:0;border:none;font-family:var(--mono);font-size:13px;line-height:21px;white-space:pre-wrap;word-break:break-word;pointer-events:none;box-sizing:border-box;color:var(--tx0);tab-size:4;-moz-tab-size:4}
+#editor{position:absolute;top:0;left:0;width:100%;padding:10px;border:none;outline:none;resize:none;font-family:var(--mono);font-size:13px;line-height:21px;background:transparent;color:transparent;caret-color:var(--tx0);tab-size:4;-moz-tab-size:4;box-sizing:border-box;overflow:hidden;-webkit-user-select:text;spellcheck:false}
+#editor::selection{background:rgba(100,149,237,0.3)}
+.hl-kw{color:var(--hl-kw);font-weight:600}
+.hl-bi{color:var(--hl-bi)}
+.hl-str{color:var(--hl-str)}
+.hl-num{color:var(--hl-num)}
+.hl-cmt{color:var(--hl-cmt);font-style:italic}
+.hl-word{background:var(--hl-word);border-radius:2px}
+.hl-bkt{background:var(--hl-bkt);border-radius:2px;font-weight:bold}
+.hl-ph{color:var(--tx2)}
 #out-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg0)}
 #workspace.stacked #out-panel{height:220px;flex-shrink:0}
 #workspace.side #out-panel{width:300px;flex-shrink:0}
@@ -115,8 +131,10 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
     <div id="ed-panel">
       <div id="ed-row">
         <div id="lnum"><div class="ln">1</div></div>
-        <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="none" autocomplete="off" placeholder="# Start coding here...
-# Your work saves automatically."></textarea>
+        <div id="ed-wrap">
+          <pre id="highlight" aria-hidden="true"></pre>
+          <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="none" autocomplete="off"></textarea>
+        </div>
       </div>
     </div>
 
@@ -156,6 +174,8 @@ const STORE='pyide_files';
 
 const app=document.getElementById('app');
 const editor=document.getElementById('editor');
+const edWrap=document.getElementById('ed-wrap');
+const hlPre=document.getElementById('highlight');
 const lnum=document.getElementById('lnum');
 const outBody=document.getElementById('out-body');
 const runBtn=document.getElementById('run-btn');
@@ -167,6 +187,175 @@ const filesList=document.getElementById('files-list');
 const renameOverlay=document.getElementById('rename-overlay');
 const renameInput=document.getElementById('rename-input');
 const filesPanel=document.getElementById('files-panel');
+
+// ── Syntax highlighting ───────────────────────────────────────────────────────
+
+const KW = new Set(['False','None','True','and','as','assert','async','await',
+  'break','class','continue','def','del','elif','else','except','finally',
+  'for','from','global','if','import','in','is','lambda','nonlocal','not',
+  'or','pass','raise','return','try','while','with','yield']);
+
+const BI = new Set(['print','input','int','float','str','bool','len','range',
+  'list','dict','tuple','set','frozenset','type','abs','max','min','sum',
+  'sorted','reversed','enumerate','zip','map','filter','open','isinstance',
+  'issubclass','hasattr','getattr','setattr','repr','format','round','pow',
+  'divmod','hex','oct','bin','chr','ord','id','hash','vars','dir','next',
+  'iter','callable','any','all','object','super','property','staticmethod',
+  'classmethod','Exception','ValueError','TypeError','IndexError','KeyError',
+  'AttributeError','NameError','StopIteration','RuntimeError','print']);
+
+function escHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function tokenize(code){
+  const toks=[];
+  let i=0;
+  while(i<code.length){
+    // comment
+    if(code[i]==='#'){
+      let j=code.indexOf('\n',i);
+      if(j<0) j=code.length;
+      toks.push({s:i,e:j,t:'cmt'});
+      i=j; continue;
+    }
+    // triple string
+    if(i+2<code.length){
+      const q3=code.slice(i,i+3);
+      if(q3==='"""'||q3==="'''"){
+        let j=i+3;
+        while(j<=code.length-3){
+          if(code.slice(j,j+3)===q3){j+=3;break;}
+          j++;
+        }
+        if(j>code.length-3) j=code.length;
+        toks.push({s:i,e:j,t:'str'});
+        i=j; continue;
+      }
+    }
+    // single-line string
+    if(code[i]==='"'||code[i]==="'"){
+      const q=code[i];
+      let j=i+1;
+      while(j<code.length&&code[j]!==q&&code[j]!=='\n'){
+        if(code[j]==='\\') j++;
+        j++;
+      }
+      toks.push({s:i,e:j+1,t:'str'});
+      i=j+1; continue;
+    }
+    // number
+    if(/[0-9]/.test(code[i])||(code[i]==='.'&&i+1<code.length&&/[0-9]/.test(code[i+1]))){
+      let j=i;
+      while(j<code.length&&/[0-9._eExXoObBjJ]/.test(code[j])) j++;
+      toks.push({s:i,e:j,t:'num'});
+      i=j; continue;
+    }
+    // identifier / keyword / builtin
+    if(/[a-zA-Z_]/.test(code[i])){
+      let j=i;
+      while(j<code.length&&/[a-zA-Z0-9_]/.test(code[j])) j++;
+      const w=code.slice(i,j);
+      toks.push({s:i,e:j,t:KW.has(w)?'kw':BI.has(w)?'bi':'id'});
+      i=j; continue;
+    }
+    // bracket
+    if('([{)]}'.includes(code[i])){
+      toks.push({s:i,e:i+1,t:'bkt'});
+      i++; continue;
+    }
+    // default (single char)
+    toks.push({s:i,e:i+1,t:'def'});
+    i++;
+  }
+  return toks;
+}
+
+function findBracketMatch(toks,code,pos,dir){
+  const opens='([{',closes=')]}';
+  const ch=code[pos];
+  const target=dir>0?closes[opens.indexOf(ch)]:opens[closes.indexOf(ch)];
+  const bkts=toks.filter(t=>t.t==='bkt');
+  const idx=bkts.findIndex(t=>t.s===pos);
+  if(idx<0) return -1;
+  let depth=1, j=idx+dir;
+  while(j>=0&&j<bkts.length){
+    const bc=code[bkts[j].s];
+    if(bc===ch) depth++;
+    else if(bc===target){depth--;if(depth===0) return bkts[j].s;}
+    j+=dir;
+  }
+  return -1;
+}
+
+function buildHighlight(code, cursor){
+  if(!code) return '<span class="hl-ph"># Start coding here...\n# Your work saves automatically.</span> ';
+
+  const toks=tokenize(code);
+
+  // word at cursor (identifiers only)
+  let hlWord=null;
+  if(cursor>=0){
+    let ws=cursor,we=cursor;
+    while(ws>0&&/\w/.test(code[ws-1])) ws--;
+    while(we<code.length&&/\w/.test(code[we])) we++;
+    if(we>ws){
+      const w=code.slice(ws,we);
+      if(/[a-zA-Z_]/.test(w[0])) hlWord=w;
+    }
+  }
+
+  // bracket match
+  let bktA=-1,bktB=-1;
+  if(cursor>=0){
+    const opens='([{',closes=')]}';
+    let brPos=-1,brDir=0;
+    const c0=code[cursor]||'',c1=cursor>0?code[cursor-1]:'';
+    if(opens.includes(c0)){brPos=cursor;brDir=1;}
+    else if(opens.includes(c1)){brPos=cursor-1;brDir=1;}
+    else if(closes.includes(c0)){brPos=cursor;brDir=-1;}
+    else if(closes.includes(c1)){brPos=cursor-1;brDir=-1;}
+    if(brPos>=0){
+      bktB=findBracketMatch(toks,code,brPos,brDir);
+      if(bktB>=0) bktA=brPos;
+    }
+  }
+
+  let html='';
+  for(const tok of toks){
+    const txt=code.slice(tok.s,tok.e);
+    const esc=escHtml(txt);
+    if(tok.t==='bkt'){
+      if(tok.s===bktA||tok.s===bktB) html+=`<span class="hl-bkt">${esc}</span>`;
+      else html+=esc;
+    } else if(tok.t==='id'&&hlWord&&txt===hlWord){
+      html+=`<span class="hl-word">${esc}</span>`;
+    } else if(tok.t==='kw'){
+      html+=`<span class="hl-kw">${esc}</span>`;
+    } else if(tok.t==='bi'){
+      html+=`<span class="hl-bi">${esc}</span>`;
+    } else if(tok.t==='str'){
+      html+=`<span class="hl-str">${esc}</span>`;
+    } else if(tok.t==='num'){
+      html+=`<span class="hl-num">${esc}</span>`;
+    } else if(tok.t==='cmt'){
+      html+=`<span class="hl-cmt">${esc}</span>`;
+    } else {
+      html+=esc;
+    }
+  }
+  html+=' ';
+  return html;
+}
+
+function updateHighlight(){
+  const cursor=(document.activeElement===editor)?editor.selectionStart:-1;
+  hlPre.innerHTML=buildHighlight(editor.value,cursor);
+  const h=hlPre.offsetHeight;
+  editor.style.height=h+'px';
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
 
 function setStatus(s,m){sdot.className=s;smsg.textContent=m}
 
@@ -204,6 +393,8 @@ function toggleFiles(){
   if(filesOpen) renderFiles();
 }
 
+// ── File management ───────────────────────────────────────────────────────────
+
 function getFiles(){try{return JSON.parse(localStorage.getItem(STORE)||'{}')}catch{return{}}}
 function saveFiles(f){localStorage.setItem(STORE,JSON.stringify(f))}
 function genId(){return 'f'+Date.now()}
@@ -214,6 +405,7 @@ function loadFile(id){
   currentFile=id;
   editor.value=files[id].code||'';
   updateLnum();
+  updateHighlight();
   renderFiles();
   clearOutput();
 }
@@ -245,6 +437,7 @@ function deleteFile(id,e){
     currentFile=null;
     editor.value='';
     updateLnum();
+    updateHighlight();
     clearOutput();
     const remaining=Object.keys(files);
     if(remaining.length) loadFile(remaining[remaining.length-1]);
@@ -297,9 +490,17 @@ function renderFiles(){
   });
 }
 
+// ── Editor events ─────────────────────────────────────────────────────────────
+
+function updateLnum(){
+  const n=editor.value.split('\n').length;
+  lnum.innerHTML=Array.from({length:n},(_,i)=>`<div class="ln">${i+1}</div>`).join('');
+}
+
 let saveTimer=null;
 editor.addEventListener('input',()=>{
   updateLnum();
+  updateHighlight();
   clearTimeout(saveTimer);
   saveTimer=setTimeout(()=>{
     if(!currentFile){
@@ -316,7 +517,8 @@ editor.addEventListener('input',()=>{
   },800);
 });
 
-editor.addEventListener('scroll',()=>{lnum.scrollTop=editor.scrollTop});
+// sync line numbers with editor scroll
+edWrap.addEventListener('scroll',()=>{lnum.scrollTop=edWrap.scrollTop});
 
 editor.addEventListener('keydown',e=>{
   if(e.key==='Tab'){
@@ -325,9 +527,30 @@ editor.addEventListener('keydown',e=>{
     editor.value=editor.value.slice(0,s)+'    '+editor.value.slice(en);
     editor.selectionStart=editor.selectionEnd=s+4;
     updateLnum();
+    updateHighlight();
+  }
+  if(e.key==='Enter'&&!e.ctrlKey&&!e.metaKey){
+    e.preventDefault();
+    const s=editor.selectionStart;
+    const text=editor.value;
+    const lineStart=text.lastIndexOf('\n',s-1)+1;
+    const currentLine=text.slice(lineStart,s);
+    const indent=currentLine.match(/^(\s*)/)[1];
+    const extra=currentLine.trimEnd().endsWith(':')?'    ':'';
+    const insert='\n'+indent+extra;
+    editor.value=text.slice(0,s)+insert+text.slice(editor.selectionEnd);
+    editor.selectionStart=editor.selectionEnd=s+insert.length;
+    updateLnum();
+    updateHighlight();
   }
   if((e.ctrlKey||e.metaKey)&&e.key==='Enter') runCode();
 });
+
+// update bracket match and word highlight on cursor move
+editor.addEventListener('keyup',()=>updateHighlight());
+editor.addEventListener('click',()=>updateHighlight());
+editor.addEventListener('focus',()=>updateHighlight());
+editor.addEventListener('blur',()=>updateHighlight());
 
 editor.addEventListener('paste',e=>{
   const text=(e.clipboardData||window.clipboardData).getData('text');
@@ -341,10 +564,7 @@ editor.addEventListener('paste',e=>{
 
 editor.addEventListener('contextmenu',e=>e.preventDefault());
 
-function updateLnum(){
-  const n=editor.value.split('\n').length;
-  lnum.innerHTML=Array.from({length:n},(_,i)=>`<div class="ln">${i+1}</div>`).join('');
-}
+// ── Output / input ────────────────────────────────────────────────────────────
 
 function appendOut(text,cls){
   if(!text) return;
@@ -368,11 +588,12 @@ window._pyInput=function(prompt){
     inp.autocapitalize='none';
     inp.autocomplete='off';
     inp.spellcheck=false;
+    inp.style.width='10ch';
     outBody.appendChild(inp);
     outBody.scrollTop=outBody.scrollHeight;
     inp.focus();
     inp.addEventListener('input',()=>{
-      inp.style.width=Math.max(8,inp.value.length+2)+'ch';
+      inp.style.width=Math.max(10,inp.value.length+2)+'ch';
     });
     inp.addEventListener('keydown',e=>{
       if(e.key==='Enter'){
@@ -407,6 +628,8 @@ function exportFile(){
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+// ── Python runner ─────────────────────────────────────────────────────────────
 
 function formatTraceback(raw){
   return raw
@@ -551,6 +774,8 @@ await _main()
   }
 }
 
+// ── Init ──────────────────────────────────────────────────────────────────────
+
 (async()=>{
   try{
     pyodide=await loadPyodide();
@@ -558,6 +783,7 @@ await _main()
     runBtn.disabled=false;
     setStatus('ready','Python 3.11 ready');
     updateLnum();
+    updateHighlight();
     const files=getFiles();
     const keys=Object.keys(files);
     if(keys.length){
