@@ -688,7 +688,7 @@ async function runCode(){
 
   try{
     await pyodide.runPythonAsync(`
-import sys, io, builtins, js, ast
+import sys, io, builtins, js, ast, time as _time
 
 class _Out(io.StringIO):
     def write(self, s):
@@ -705,9 +705,24 @@ class _Err(io.StringIO):
 sys.stdout = _Out()
 sys.stderr = _Err()
 
+# Timer pause state — reset each run, used by _watch tracer
+_timer_paused = [False]
+_pause_total  = [0.0]
+_pause_start  = [0.0]
+
 async def _input(prompt=''):
+    _timer_paused[0] = True
+    _pause_start[0]  = _time.time()
     val = await _pyInput(str(prompt))
+    _pause_total[0] += _time.time() - _pause_start[0]
+    _timer_paused[0] = False
     return str(val)
+
+_real_sleep = _time.sleep
+def _sleep(seconds):
+    _pause_total[0] += float(seconds)
+    _real_sleep(seconds)
+_time.sleep = _sleep
 
 builtins.input = _input
 
@@ -794,20 +809,21 @@ def _make_async(code_str):
   try{
     pyodide.globals.set('_student_code', editor.value);
     await pyodide.runPythonAsync(`
-import time as _t
 _code_obj = _make_async(_student_code)
 exec(_code_obj)
 
-_t0 = _t.time()
+_timer_paused[0] = False
+_pause_total[0]  = 0.0
+_t0 = _time.time()
 _lc = [0]
 def _watch(frame, event, arg):
-    if event == 'line':
+    if event == 'line' and not _timer_paused[0]:
         _lc[0] += 1
         if (_lc[0] & 63) == 0:
-            if _t.time() - _t0 > 3.0:
+            if _time.time() - _t0 - _pause_total[0] > 3.0:
                 sys.settrace(None)
                 raise RuntimeError(
-                    "Your program was stopped after 3 seconds.\\n"
+                    "Your program was stopped after 3 seconds of running.\\n"
                     "This usually means there is an infinite loop — a loop that never ends.\\n"
                     "Check your while loops: make sure the condition can eventually become False,\\n"
                     "or that you have a break statement inside."
