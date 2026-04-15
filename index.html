@@ -631,6 +631,39 @@ function exportFile(){
 
 // ── Python runner ─────────────────────────────────────────────────────────────
 
+function checkInfiniteLoops(code){
+  // Strip strings and comments to avoid false positives
+  const s=code
+    .replace(/#[^\n]*/g,'')
+    .replace(/"""[\s\S]*?"""/g,'""')
+    .replace(/'''[\s\S]*?'''/g,"''")
+    .replace(/"(?:[^"\\]|\\.)*"/g,'""')
+    .replace(/'(?:[^'\\]|\\.)*'/g,"''");
+
+  const hasBreak=/\bbreak\b/.test(s);
+
+  // while True: or while 1: with no break anywhere
+  if(/\bwhile\s+(True|1)\s*:/.test(s)&&!hasBreak){
+    return(
+      "Infinite loop detected!\n"+
+      "  'while True:' runs forever unless the loop contains a 'break' statement.\n"+
+      "  Either add a break, or use a condition that can become False (e.g. while score < 10:)."
+    );
+  }
+
+  // Constant comparison: while x == x: / while 0 == 0: etc.
+  const m=s.match(/\bwhile\s+(\w+)\s*(==|<=|>=)\s*\1\s*:/);
+  if(m){
+    return(
+      "Infinite loop detected!\n"+
+      `  'while ${m[1]} ${m[2]} ${m[1]}:' is always True — this loop will never stop.\n`+
+      "  Change the condition to something that can eventually become False."
+    );
+  }
+
+  return null;
+}
+
 function formatTraceback(raw){
   return raw
     .replace(/Traceback \(most recent call last\):\n/g,'')
@@ -747,12 +780,45 @@ def _make_async(code_str):
     return;
   }
 
+  // Static pre-check: warn about obvious infinite loops
+  const infiniteLoopWarning = checkInfiniteLoops(editor.value);
+  if(infiniteLoopWarning){
+    appendOut(infiniteLoopWarning+'\n','err');
+    setStatus('error','Possible infinite loop');
+    running=false;
+    runBtn.style.display='';
+    stopBtn.style.display='none';
+    return;
+  }
+
   try{
     pyodide.globals.set('_student_code', editor.value);
     await pyodide.runPythonAsync(`
+import time as _t
 _code_obj = _make_async(_student_code)
 exec(_code_obj)
-await _main()
+
+_t0 = _t.time()
+_lc = [0]
+def _watch(frame, event, arg):
+    if event == 'line':
+        _lc[0] += 1
+        if (_lc[0] & 63) == 0:
+            if _t.time() - _t0 > 3.0:
+                sys.settrace(None)
+                raise RuntimeError(
+                    "Your program was stopped after 3 seconds.\\n"
+                    "This usually means there is an infinite loop — a loop that never ends.\\n"
+                    "Check your while loops: make sure the condition can eventually become False,\\n"
+                    "or that you have a break statement inside."
+                )
+    return _watch
+
+sys.settrace(_watch)
+try:
+    await _main()
+finally:
+    sys.settrace(None)
 `);
   }catch(err){
     const msg=formatTraceback(String(err));
