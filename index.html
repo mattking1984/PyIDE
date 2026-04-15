@@ -48,6 +48,7 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 #ed-row{display:flex;flex:1;overflow:hidden}
 #lnum{padding:10px 0;background:var(--bg1);min-width:36px;flex-shrink:0;overflow:hidden;border-right:1px solid var(--bd);user-select:none}
 .ln{font-family:var(--mono);font-size:13px;color:var(--tx2);text-align:right;padding:0 7px;line-height:21px}
+.ln.err-line{background:#FDDCD4;color:var(--red2);font-weight:700;border-radius:3px 0 0 3px}
 #ed-wrap{position:relative;flex:1;overflow:auto}
 #highlight{position:relative;display:block;min-width:100%;padding:10px;margin:0;border:none;font-family:var(--mono);font-size:13px;line-height:21px;white-space:pre-wrap;word-break:break-word;pointer-events:none;box-sizing:border-box;color:var(--tx0);tab-size:4;-moz-tab-size:4}
 #editor{position:absolute;top:0;left:0;width:100%;padding:10px;border:none;outline:none;resize:none;font-family:var(--mono);font-size:13px;line-height:21px;background:transparent;color:transparent;caret-color:var(--tx0);tab-size:4;-moz-tab-size:4;box-sizing:border-box;overflow:hidden;-webkit-user-select:text;spellcheck:false}
@@ -793,18 +794,57 @@ function checkInfiniteLoops(code){
 }
 
 function formatTraceback(raw){
-  return raw
-    .replace(/Traceback \(most recent call last\):\n/g,'')
-    .replace(/  File "<exec>", /g,'  ')
-    .replace(/  File "<string>", /g,'  ')
-    .replace(/  File "<student>", /g,'  ')
-    .trim();
+  const lines = raw.split('\n');
+
+  // The last non-empty line is always the actual error (e.g. "NameError: ...")
+  let errorLine = '';
+  for(let i=lines.length-1;i>=0;i--){
+    if(lines[i].trim()){errorLine=lines[i].trim();break;}
+  }
+
+  // SyntaxError: line number is in the message itself as "(<string>, line N)"
+  // e.g. "SyntaxError: expected ':' (<string>, line 4)"
+  const syntaxRe = /\(<(?:string|student)>,\s*line (\d+)\)/;
+  for(let i=lines.length-1;i>=0;i--){
+    const m = lines[i].match(syntaxRe);
+    if(m){
+      const n = parseInt(m[1]) - 1; // subtract 1 for the _main wrapper
+      // Strip the file/line suffix from the message for cleanliness
+      const msg = errorLine.replace(syntaxRe,'').trim();
+      return {text:`Line ${n}: ${msg}`, line:n};
+    }
+  }
+
+  // Runtime errors: innermost <student> frame
+  const studentRe = /File "<student>", line (\d+)/;
+  const bareRe    = /^\s*line (\d+),/;
+  let studentLine = null;
+  for(let i=lines.length-1;i>=0;i--){
+    const m = lines[i].match(studentRe) || lines[i].match(bareRe);
+    if(m){studentLine=parseInt(m[1]);break;}
+  }
+  // Subtract 1 for the "async def _main():" wrapper line
+  if(studentLine!==null && studentLine>1) studentLine -= 1;
+
+  if(studentLine!==null){
+    return {text:`Line ${studentLine}: ${errorLine}`, line:studentLine};
+  }
+
+  return {text:errorLine || raw.trim(), line:null};
+}
+
+function highlightErrLine(n){
+  document.querySelectorAll('.ln').forEach(el=>el.classList.remove('err-line'));
+  if(n===null) return;
+  const divs=lnum.querySelectorAll('.ln');
+  if(divs[n-1]) divs[n-1].classList.add('err-line');
 }
 
 async function runCode(){
   if(!pyodide||running) return;
   running=true;
   clearOutput();
+  highlightErrLine(null);
   saveCurrentCode();
   runBtn.style.display='none';
   stopBtn.style.display='';
@@ -965,8 +1005,9 @@ finally:
     sys.settrace(None)
 `);
   }catch(err){
-    const msg=formatTraceback(String(err));
-    appendOut(msg+'\n','err');
+    const {text,line}=formatTraceback(String(err));
+    appendOut(text+'\n','err');
+    highlightErrLine(line);
     setStatus('error','Error');
     running=false;
     runBtn.style.display='';
