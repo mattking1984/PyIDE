@@ -82,6 +82,26 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 #files-hdr{display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid var(--bd);flex-shrink:0}
 #files-hdr span{font-size:11px;font-weight:500;color:var(--tx1);text-transform:uppercase;letter-spacing:.05em;flex:1}
 #new-file-btn{font-size:20px;line-height:1;color:var(--green);cursor:pointer;background:none;border:none;padding:0 2px;font-weight:500}
+#filename-input{font-family:inherit;font-size:13px;font-weight:500;color:var(--tx0);background:transparent;border:none;border-bottom:1.5px solid transparent;outline:none;flex:1;min-width:80px;max-width:220px;padding:2px 4px;border-radius:0}
+#filename-input:hover{border-bottom-color:var(--bd2)}
+#filename-input:focus{border-bottom-color:var(--blue)}
+#filename-ext{font-size:12px;color:var(--tx2);white-space:nowrap;margin-right:8px}
+#new-btn{background:var(--green);color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
+#new-btn:hover{background:var(--green2)}
+.undo-btn{background:var(--bg0);color:var(--tx0);border:1px solid var(--bd);border-radius:6px;padding:3px 8px;font-size:14px;cursor:pointer;font-family:inherit;line-height:1}
+.undo-btn:hover{background:var(--bg2)}
+#newfile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;z-index:30}
+#newfile-overlay.show{display:flex}
+#newfile-box{background:var(--bg0);border:1px solid var(--bd2);border-radius:10px;padding:20px;width:300px;display:flex;flex-direction:column;gap:10px}
+#newfile-box label{font-size:13px;color:var(--tx0);font-weight:500}
+#newfile-note{font-size:12px;color:var(--green);min-height:16px}
+#newfile-row{display:flex;align-items:center;gap:4px}
+#newfile-input{flex:1;font-size:13px;border:1px solid var(--bd2);border-radius:6px;padding:6px 8px;background:var(--bg0);color:var(--tx0);outline:none;font-family:inherit}
+#newfile-input:focus{border-color:var(--blue)}
+#newfile-suffix{font-size:13px;color:var(--tx2);font-family:inherit}
+#newfile-btns{display:flex;gap:8px;justify-content:flex-end}
+#newfile-ok{background:var(--green);color:#fff;border:none}
+#newfile-ok:hover{background:var(--green2)}
 #files-list{flex:1;overflow-y:auto;padding:4px}
 .file-item{display:flex;align-items:center;padding:6px 8px;border-radius:6px;cursor:pointer;gap:6px;margin-bottom:2px;border:1px solid transparent}
 .file-item:hover{background:var(--bg2)}
@@ -118,12 +138,16 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 <body>
 <div id="app">
   <div id="toolbar">
-    <span class="tl-title">PyIDE</span>
+    <input id="filename-input" type="text" placeholder="untitled" autocomplete="off" spellcheck="false" title="Click to rename file">
+    <span id="filename-ext">.py</span>
+    <button id="new-btn" onclick="showNewFile()">＋ New</button>
     <button class="tl-btn" id="btn-files" onclick="toggleFiles()">Files</button>
     <button class="tl-btn on" id="btn-stack" onclick="setLayout('stacked')">Stacked</button>
     <button class="tl-btn" id="btn-side" onclick="setLayout('side')">Side by side</button>
     <button class="tl-btn" id="btn-dark" onclick="toggleDark()">Dark</button>
     <button class="tl-btn" onclick="exportFile()">Export .py</button>
+    <button class="undo-btn" onclick="undoEdit()" title="Undo (Ctrl+Z)">↩</button>
+    <button class="undo-btn" onclick="redoEdit()" title="Redo (Ctrl+Y)">↪</button>
     <button class="zoom-btn" onclick="setZoom(-1)" title="Zoom out">A−</button>
     <button class="zoom-btn" onclick="setZoom(1)" title="Zoom in">A+</button>
     <button id="run-btn" disabled onclick="toggleRun()">Loading...</button>
@@ -133,7 +157,7 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
     <div id="files-panel">
       <div id="files-hdr">
         <span>My files</span>
-        <button id="new-file-btn" onclick="newFile()" title="New file">+</button>
+        <button id="new-file-btn" onclick="showNewFile()" title="New file">+</button>
       </div>
       <div id="files-list"></div>
     </div>
@@ -178,6 +202,21 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
   </div>
 </div>
 
+<div id="newfile-overlay">
+  <div id="newfile-box">
+    <label>Create new file</label>
+    <div id="newfile-note"></div>
+    <div id="newfile-row">
+      <input id="newfile-input" type="text" maxlength="60" placeholder="my_program" autocomplete="off" spellcheck="false">
+      <span id="newfile-suffix">.py</span>
+    </div>
+    <div id="newfile-btns">
+      <button class="rb" id="newfile-cancel" onclick="closeNewFile()">Cancel</button>
+      <button class="rb" id="newfile-ok" onclick="confirmNewFile()">Create</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
 <script>
 let pyodide=null, inputResolve=null, running=false;
@@ -199,6 +238,10 @@ const filesList=document.getElementById('files-list');
 const renameOverlay=document.getElementById('rename-overlay');
 const renameInput=document.getElementById('rename-input');
 const filesPanel=document.getElementById('files-panel');
+const filenameInput=document.getElementById('filename-input');
+const newfileOverlay=document.getElementById('newfile-overlay');
+const newfileInput=document.getElementById('newfile-input');
+const newfileNote=document.getElementById('newfile-note');
 
 // ── Syntax highlighting ───────────────────────────────────────────────────────
 
@@ -525,6 +568,7 @@ function loadFile(id){
   if(!files[id]) return;
   currentFile=id;
   editor.value=files[id].code||'';
+  filenameInput.value=(files[id].name||'').replace(/\.py$/,'');
   updateLnum();
   updateHighlight();
   renderFiles();
@@ -594,6 +638,64 @@ renameInput.addEventListener('keydown',e=>{
   if(e.key==='Escape') closeRename();
 });
 
+function commitFilename(){
+  if(!currentFile) return;
+  const files=getFiles();
+  if(!files[currentFile]) return;
+  let name=filenameInput.value.trim()||'untitled';
+  if(!name.endsWith('.py')) name+='.py';
+  files[currentFile].name=name;
+  filenameInput.value=name.replace(/\.py$/,'');
+  saveFiles(files);
+  if(filesOpen) renderFiles();
+}
+
+filenameInput.addEventListener('blur',commitFilename);
+filenameInput.addEventListener('keydown',e=>{
+  e.stopPropagation();
+  if(e.key==='Enter'){commitFilename();filenameInput.blur();}
+  if(e.key==='Escape'){
+    if(currentFile){const f=getFiles();filenameInput.value=(f[currentFile]?.name||'').replace(/\.py$/,'');}
+    filenameInput.blur();
+  }
+});
+
+function showNewFile(){
+  const files=getFiles();
+  const count=Object.keys(files).length+1;
+  newfileInput.value='program_'+count;
+  if(currentFile&&files[currentFile]){
+    newfileNote.textContent='Your current file "'+files[currentFile].name+'" is already saved.';
+    newfileNote.style.color='var(--green)';
+  } else {
+    newfileNote.textContent='';
+  }
+  newfileOverlay.classList.add('show');
+  setTimeout(()=>{newfileInput.focus();newfileInput.select();},50);
+}
+
+function closeNewFile(){newfileOverlay.classList.remove('show');}
+
+function confirmNewFile(){
+  let name=newfileInput.value.trim()||'untitled';
+  if(!name.endsWith('.py')) name+='.py';
+  const files=getFiles();
+  const id=genId();
+  files[id]={name,code:'',created:Date.now(),updated:Date.now()};
+  saveFiles(files);
+  loadFile(id);
+  closeNewFile();
+}
+
+newfileInput.addEventListener('keydown',e=>{
+  e.stopPropagation();
+  if(e.key==='Enter') confirmNewFile();
+  if(e.key==='Escape') closeNewFile();
+});
+
+function undoEdit(){editor.focus();document.execCommand('undo');updateLnum();updateHighlight();}
+function redoEdit(){editor.focus();document.execCommand('redo');updateLnum();updateHighlight();}
+
 function renderFiles(){
   const files=getFiles();
   const keys=Object.keys(files).sort((a,b)=>(files[b].updated||0)-(files[a].updated||0));
@@ -627,9 +729,11 @@ editor.addEventListener('input',()=>{
     if(!currentFile){
       const files=getFiles();
       const id=genId();
-      files[id]={name:'program_1.py',code:editor.value,created:Date.now(),updated:Date.now()};
+      const name='program_1.py';
+      files[id]={name,code:editor.value,created:Date.now(),updated:Date.now()};
       saveFiles(files);
       currentFile=id;
+      filenameInput.value=name.replace(/\.py$/,'');
       if(filesOpen) renderFiles();
     } else {
       saveCurrentCode();
@@ -644,11 +748,7 @@ edWrap.addEventListener('scroll',()=>{lnum.scrollTop=edWrap.scrollTop});
 editor.addEventListener('keydown',e=>{
   if(e.key==='Tab'){
     e.preventDefault();
-    const s=editor.selectionStart,en=editor.selectionEnd;
-    editor.value=editor.value.slice(0,s)+'    '+editor.value.slice(en);
-    editor.selectionStart=editor.selectionEnd=s+4;
-    updateLnum();
-    updateHighlight();
+    document.execCommand('insertText',false,'    ');
   }
   if(e.key==='Enter'&&!e.ctrlKey&&!e.metaKey){
     e.preventDefault();
@@ -658,11 +758,7 @@ editor.addEventListener('keydown',e=>{
     const currentLine=text.slice(lineStart,s);
     const indent=currentLine.match(/^(\s*)/)[1];
     const extra=currentLine.trimEnd().endsWith(':')?'    ':'';
-    const insert='\n'+indent+extra;
-    editor.value=text.slice(0,s)+insert+text.slice(editor.selectionEnd);
-    editor.selectionStart=editor.selectionEnd=s+insert.length;
-    updateLnum();
-    updateHighlight();
+    document.execCommand('insertText',false,'\n'+indent+extra);
   }
   if((e.ctrlKey||e.metaKey)&&e.key==='Enter') runCode();
 });
