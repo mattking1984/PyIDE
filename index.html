@@ -30,8 +30,10 @@
 }
 html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 #app{display:flex;flex-direction:column;height:100vh;background:var(--bg0);color:var(--tx0)}
-#toolbar{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--bg1);border-bottom:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap}
-.tl-title{font-size:13px;font-weight:500;color:var(--tx0);flex:1;min-width:80px}
+#toolbar{display:flex;align-items:center;gap:0;padding:6px 10px;background:var(--bg1);border-bottom:1px solid var(--bd);flex-shrink:0}
+.tl-left{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.tl-center{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding:0 12px}
+.tl-right{display:flex;align-items:center;gap:6px;flex:1;justify-content:flex-end}
 .tl-btn{background:var(--bg0);color:var(--tx0);border:1px solid var(--bd);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap}
 .tl-btn:hover{background:var(--bg2);border-color:var(--bd2)}
 .tl-btn.on{background:var(--bg2);border-color:var(--bd2);font-weight:500}
@@ -86,8 +88,15 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 #filename-input:hover{border-bottom-color:var(--bd2)}
 #filename-input:focus{border-bottom-color:var(--blue)}
 #filename-ext{font-size:12px;color:var(--tx2);white-space:nowrap;margin-right:8px}
-#new-btn{background:var(--green);color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
-#new-btn:hover{background:var(--green2)}
+#new-btn{background:var(--blue);color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
+#new-btn:hover{background:var(--blue2)}
+#settings-wrap{position:relative}
+#settings-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--bg0);border:1px solid var(--bd2);border-radius:9px;padding:5px;box-shadow:0 4px 16px rgba(0,0,0,.14);z-index:100;min-width:160px;flex-direction:column;gap:2px}
+#settings-menu.open{display:flex}
+.sm-item{background:none;border:none;border-radius:6px;padding:7px 12px;font-size:13px;color:var(--tx0);cursor:pointer;font-family:inherit;text-align:left;white-space:nowrap;width:100%}
+.sm-item:hover{background:var(--bg2)}
+.sm-item.on{background:var(--bg2);font-weight:500}
+.sm-sep{height:1px;background:var(--bd);margin:3px 0}
 .undo-btn{background:var(--bg0);color:var(--tx0);border:1px solid var(--bd);border-radius:6px;padding:3px 8px;font-size:14px;cursor:pointer;font-family:inherit;line-height:1}
 .undo-btn:hover{background:var(--bg2)}
 #newfile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;z-index:30}
@@ -138,19 +147,31 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 <body>
 <div id="app">
   <div id="toolbar">
-    <input id="filename-input" type="text" placeholder="untitled" autocomplete="off" spellcheck="false" title="Click to rename file">
-    <span id="filename-ext">.py</span>
-    <button id="new-btn" onclick="showNewFile()">＋ New</button>
-    <button class="tl-btn" id="btn-files" onclick="toggleFiles()">Files</button>
-    <button class="tl-btn on" id="btn-stack" onclick="setLayout('stacked')">Stacked</button>
-    <button class="tl-btn" id="btn-side" onclick="setLayout('side')">Side by side</button>
-    <button class="tl-btn" id="btn-dark" onclick="toggleDark()">Dark</button>
-    <button class="tl-btn" onclick="exportFile()">Export .py</button>
-    <button class="undo-btn" onclick="undoEdit()" title="Undo (Ctrl+Z)">↩</button>
-    <button class="undo-btn" onclick="redoEdit()" title="Redo (Ctrl+Y)">↪</button>
-    <button class="zoom-btn" onclick="setZoom(-1)" title="Zoom out">A−</button>
-    <button class="zoom-btn" onclick="setZoom(1)" title="Zoom in">A+</button>
-    <button id="run-btn" disabled onclick="toggleRun()">Loading...</button>
+    <div class="tl-left">
+      <input id="filename-input" type="text" placeholder="untitled" autocomplete="off" spellcheck="false" title="Click to rename file">
+      <span id="filename-ext">.py</span>
+      <button id="new-btn" onclick="showNewFile()">＋ New</button>
+      <button class="tl-btn" id="btn-files" onclick="toggleFiles()">Files</button>
+      <button class="tl-btn" onclick="exportFile()">Download</button>
+    </div>
+    <div class="tl-center">
+      <button class="undo-btn" onclick="undoEdit()" title="Undo (Ctrl+Z)">↩</button>
+      <button class="undo-btn" onclick="redoEdit()" title="Redo (Ctrl+Y)">↪</button>
+      <button class="zoom-btn" onclick="setZoom(-1)" title="Zoom out">A−</button>
+      <button class="zoom-btn" onclick="setZoom(1)" title="Zoom in">A+</button>
+    </div>
+    <div class="tl-right">
+      <div id="settings-wrap">
+        <button class="tl-btn" id="settings-btn" onclick="toggleSettings()">Settings ▾</button>
+        <div id="settings-menu">
+          <button class="sm-item on" id="btn-stack" onclick="setLayout('stacked');closeSettings()">Stacked</button>
+          <button class="sm-item" id="btn-side" onclick="setLayout('side');closeSettings()">Side by side</button>
+          <div class="sm-sep"></div>
+          <button class="sm-item" id="btn-dark" onclick="toggleDark()">Dark mode</button>
+        </div>
+      </div>
+      <button id="run-btn" disabled onclick="toggleRun()">Loading...</button>
+    </div>
   </div>
 
   <div id="workspace" class="stacked" style="position:relative">
@@ -536,11 +557,20 @@ function applyButtonColors(){
   c.style.borderColor=isDark?'#3a3a36':'#c8c7c0';
 }
 
+function toggleSettings(){
+  document.getElementById('settings-menu').classList.toggle('open');
+}
+function closeSettings(){
+  document.getElementById('settings-menu').classList.remove('open');
+}
+document.addEventListener('click',e=>{
+  if(!document.getElementById('settings-wrap').contains(e.target)) closeSettings();
+});
+
 function toggleDark(){
   dark=!dark;
   app.classList.toggle('dark',dark);
-  document.getElementById('btn-dark').textContent=dark?'Light':'Dark';
-  document.getElementById('btn-dark').classList.toggle('on',dark);
+  document.getElementById('btn-dark').textContent=dark?'Light mode':'Dark mode';
   applyButtonColors();
 }
 
