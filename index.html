@@ -111,6 +111,21 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 #newfile-btns{display:flex;gap:8px;justify-content:flex-end}
 #newfile-ok{background:var(--green);color:#fff;border:none}
 #newfile-ok:hover{background:var(--green2)}
+#share-btn{display:none;background:#7C3AED;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap}
+#share-btn:hover{background:#6D28D9}
+#share-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;z-index:30}
+#share-overlay.show{display:flex}
+#share-box{background:var(--bg0);border:1px solid var(--bd2);border-radius:10px;padding:20px;width:420px;display:flex;flex-direction:column;gap:12px}
+#share-box h3{font-size:14px;font-weight:600;color:var(--tx0);margin:0}
+#share-box label{font-size:12px;color:var(--tx2);font-weight:500;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px}
+#share-name-row{display:flex;align-items:center;gap:4px}
+#share-name-input{flex:1;font-size:13px;border:1px solid var(--bd2);border-radius:6px;padding:6px 8px;background:var(--bg0);color:var(--tx0);outline:none;font-family:inherit}
+#share-name-input:focus{border-color:#7C3AED}
+#share-name-suffix{font-size:13px;color:var(--tx2)}
+#share-url-input{width:100%;font-size:12px;font-family:'Courier New',monospace;border:1px solid var(--bd);border-radius:6px;padding:8px;background:var(--bg1);color:var(--tx1);outline:none;cursor:pointer;word-break:break-all;resize:none}
+#share-btns{display:flex;gap:8px;justify-content:flex-end}
+#share-copy-btn{background:#7C3AED;color:#fff;border:none}
+#share-copy-btn:hover{background:#6D28D9}
 #files-list{flex:1;overflow-y:auto;padding:4px}
 .file-item{display:flex;align-items:center;padding:6px 8px;border-radius:6px;cursor:pointer;gap:6px;margin-bottom:2px;border:1px solid transparent}
 .file-item:hover{background:var(--bg2)}
@@ -161,6 +176,7 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
       <button class="zoom-btn" onclick="setZoom(1)" title="Zoom in">A+</button>
     </div>
     <div class="tl-right">
+      <button id="share-btn" onclick="showShareModal()">⬆ Share Code</button>
       <div id="settings-wrap">
         <button class="tl-btn" id="settings-btn" onclick="toggleSettings()">Settings ▾</button>
         <div id="settings-menu">
@@ -223,6 +239,27 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
   </div>
 </div>
 
+<div id="share-overlay">
+  <div id="share-box">
+    <h3>Share starter code with students</h3>
+    <div>
+      <label>File name students will see</label>
+      <div id="share-name-row">
+        <input id="share-name-input" type="text" maxlength="60" autocomplete="off" spellcheck="false">
+        <span id="share-name-suffix">.py</span>
+      </div>
+    </div>
+    <div>
+      <label>Link to share (click to select)</label>
+      <textarea id="share-url-input" rows="3" readonly onclick="this.select()"></textarea>
+    </div>
+    <div id="share-btns">
+      <button class="rb" onclick="closeShareModal()">Close</button>
+      <button class="rb" id="share-copy-btn" onclick="copyShareUrl()">Copy link</button>
+    </div>
+  </div>
+</div>
+
 <div id="newfile-overlay">
   <div id="newfile-box">
     <label>Create new file</label>
@@ -240,10 +277,22 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
 <script>
+// ── Teacher key — change this to something only you know ─────────────────
+// Your teacher URL: https://yoursite.netlify.app/?t=YOURKEY
+const TEACHER_KEY = 'pyide_teacher';
+
 let pyodide=null, inputResolve=null, running=false;
 let currentFile=null, renameTarget=null, dark=false, filesOpen=false;
 let _editorFontSize=13;
 const STORE='pyide_files';
+
+// Parse URL params for teacher mode and pre-loaded code
+const _urlParams=new URLSearchParams(location.search);
+if(_urlParams.get('t')===TEACHER_KEY){
+  document.getElementById('share-btn').style.display='';
+}
+const _startCode=_urlParams.has('code')?_urlParams.get('code'):null;
+const _startName=_urlParams.get('name')||'starter';
 
 const app=document.getElementById('app');
 const editor=document.getElementById('editor');
@@ -1170,6 +1219,48 @@ finally:
   }
 }
 
+// ── Share code (teacher mode) ─────────────────────────────────────────────────
+
+const shareOverlay=document.getElementById('share-overlay');
+const shareNameInput=document.getElementById('share-name-input');
+const shareUrlInput=document.getElementById('share-url-input');
+
+function _encodeCode(code){
+  return btoa(unescape(encodeURIComponent(code)));
+}
+
+function _buildShareUrl(){
+  const name=shareNameInput.value.trim()||'starter';
+  const encoded=_encodeCode(editor.value);
+  const base=location.origin+location.pathname;
+  return base+'?code='+encoded+'&name='+encodeURIComponent(name);
+}
+
+function showShareModal(){
+  const files=getFiles();
+  const name=currentFile?(files[currentFile]?.name||'starter.py').replace(/\.py$/,''):'starter';
+  shareNameInput.value=name;
+  shareUrlInput.value=_buildShareUrl();
+  shareOverlay.classList.add('show');
+}
+
+function closeShareModal(){shareOverlay.classList.remove('show');}
+
+function copyShareUrl(){
+  navigator.clipboard.writeText(shareUrlInput.value).then(()=>{
+    const btn=document.getElementById('share-copy-btn');
+    btn.textContent='Copied!';
+    setTimeout(()=>{btn.textContent='Copy link';},2000);
+  });
+}
+
+shareNameInput.addEventListener('input',()=>{shareUrlInput.value=_buildShareUrl();});
+shareNameInput.addEventListener('keydown',e=>{
+  e.stopPropagation();
+  if(e.key==='Escape') closeShareModal();
+});
+shareUrlInput.addEventListener('keydown',e=>e.stopPropagation());
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 (async()=>{
@@ -1185,6 +1276,19 @@ finally:
     if(keys.length){
       const latest=keys.sort((a,b)=>(files[b].updated||0)-(files[a].updated||0))[0];
       loadFile(latest);
+    }
+    if(_startCode){
+      try{
+        const code=decodeURIComponent(escape(atob(_startCode)));
+        let name=decodeURIComponent(_startName);
+        if(!name.endsWith('.py')) name+='.py';
+        const allFiles=getFiles();
+        const id=genId();
+        allFiles[id]={name,code,created:Date.now(),updated:Date.now()};
+        saveFiles(allFiles);
+        loadFile(id);
+        clearOutput();
+      }catch(e){appendOut('Could not load shared code: '+e.message+'\n','err');}
     }
   }catch(e){
     setStatus('error','Failed to load runtime');
