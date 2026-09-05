@@ -289,7 +289,7 @@ const STORE='pyide_files';
 // Parse URL params for teacher mode and pre-loaded code
 const _urlParams=new URLSearchParams(location.search);
 if(_urlParams.get('t')===TEACHER_KEY){
-  document.getElementById('share-btn').style.display='';
+  document.getElementById('share-btn').style.display='inline-block';
 }
 const _startCode=_urlParams.has('code')?_urlParams.get('code'):null;
 const _startName=_urlParams.get('name')||'starter';
