@@ -288,7 +288,8 @@ const STORE='pyide_files';
 
 // Parse URL params for teacher mode and pre-loaded code
 const _urlParams=new URLSearchParams(location.search);
-if(_urlParams.get('t')===TEACHER_KEY){
+const _teacherMode=_urlParams.get('t')===TEACHER_KEY;
+if(_teacherMode){
   document.getElementById('share-btn').style.display='inline-block';
 }
 const _startCode=_urlParams.has('code')?_urlParams.get('code'):null;
@@ -850,6 +851,7 @@ editor.addEventListener('focus',()=>updateHighlight());
 editor.addEventListener('blur',()=>updateHighlight());
 
 editor.addEventListener('paste',e=>{
+  if(_teacherMode) return;
   const text=(e.clipboardData||window.clipboardData).getData('text');
   const cur=editor.value;
   if(text&&text.length>3&&!cur.includes(text.trim().slice(0,30))){
@@ -912,7 +914,7 @@ window._pyInput=function(prompt){
         if(inputResolve){inputResolve(val);inputResolve=null}
       }
     });
-    inp.addEventListener('paste',e=>e.preventDefault());
+    inp.addEventListener('paste',e=>{if(!_teacherMode) e.preventDefault();});
     inp.addEventListener('contextmenu',e=>e.preventDefault());
   });
 };
