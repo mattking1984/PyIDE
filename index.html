@@ -957,10 +957,17 @@ function exportFile(){
   const name=currentFile?getFiles()[currentFile]?.name||'program.py':'program.py';
   const blob=new Blob([editor.value],{type:'text/plain'});
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=name;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  try{
+    const url=URL.createObjectURL(blob);
+    a.href=url;
+    a.download=name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }catch(e){
+    const reader=new FileReader();
+    reader.onload=()=>{a.href=reader.result;a.download=name;a.click();};
+    reader.readAsDataURL(blob);
+  }
 }
 
 // ── Python runner ─────────────────────────────────────────────────────────────
