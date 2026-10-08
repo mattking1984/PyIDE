@@ -1085,6 +1085,8 @@ async def _input(prompt=''):
     val = await _pyInput(str(prompt))
     _pause_total[0] += _time.time() - _pause_start[0]
     _timer_paused[0] = False
+    if js._pyStopFlag:
+        raise RuntimeError("__STOPPED__")
     return str(val)
 
 _real_sleep = _time.sleep
@@ -1187,7 +1189,7 @@ _pause_total[0]  = 0.0
 _t0 = _time.time()
 _lc = [0]
 def _watch(frame, event, arg):
-    if event == 'line':
+    if event == 'line' and frame.f_code.co_filename == '<student>':
         if js._pyStopFlag:
             sys.settrace(None)
             raise RuntimeError("__STOPPED__")
