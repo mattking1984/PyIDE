@@ -281,7 +281,8 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#f0f0ee}
 // Your teacher URL: https://yoursite.netlify.app/?t=YOURKEY
 const TEACHER_KEY = 'pyide_teacher';
 
-let pyodide=null, inputResolve=null, running=false;
+let pyodide=null, inputResolve=null, running=false, pyRunning=false;
+window._pyStopFlag=false;
 let currentFile=null, renameTarget=null, dark=false, filesOpen=false;
 let _editorFontSize=13;
 const STORE='pyide_files';
@@ -935,6 +936,7 @@ function toggleRun(){
 
 function stopCode(){
   running=false;
+  window._pyStopFlag=true;
   const inp=outBody.querySelector('.inline-inp');
   if(inp) inp.remove();
   if(inputResolve){inputResolve('');inputResolve=null}
@@ -1039,8 +1041,10 @@ function highlightErrLine(n){
 }
 
 async function runCode(){
-  if(!pyodide||running) return;
+  if(!pyodide||running||pyRunning) return;
   running=true;
+  pyRunning=true;
+  window._pyStopFlag=false;
   clearOutput();
   highlightErrLine(null);
   saveCurrentCode();
@@ -1154,7 +1158,7 @@ def _make_async(code_str):
   }catch(err){
     appendOut('Internal error: '+String(err)+'\n','err');
     setStatus('error','Error');
-    running=false;
+    running=false; pyRunning=false;
     setRunBtnState(false);
     return;
   }
@@ -1164,7 +1168,7 @@ def _make_async(code_str):
   if(infiniteLoopWarning){
     appendOut(infiniteLoopWarning+'\n','err');
     setStatus('error','Possible infinite loop');
-    running=false;
+    running=false; pyRunning=false;
     setRunBtnState(false);
     return;
   }
@@ -1183,17 +1187,21 @@ _pause_total[0]  = 0.0
 _t0 = _time.time()
 _lc = [0]
 def _watch(frame, event, arg):
-    if event == 'line' and not _timer_paused[0]:
-        _lc[0] += 1
-        if (_lc[0] & 63) == 0:
-            if _time.time() - _t0 - _pause_total[0] > 3.0:
-                sys.settrace(None)
-                raise RuntimeError(
-                    "Your program was stopped after 3 seconds of running.\\n"
-                    "This usually means there is an infinite loop — a loop that never ends.\\n"
-                    "Check your while loops: make sure the condition can eventually become False,\\n"
-                    "or that you have a break statement inside."
-                )
+    if event == 'line':
+        if js._pyStopFlag:
+            sys.settrace(None)
+            raise RuntimeError("__STOPPED__")
+        if not _timer_paused[0]:
+            _lc[0] += 1
+            if (_lc[0] & 63) == 0:
+                if _time.time() - _t0 - _pause_total[0] > 3.0:
+                    sys.settrace(None)
+                    raise RuntimeError(
+                        "Your program was stopped after 3 seconds of running.\\n"
+                        "This usually means there is an infinite loop — a loop that never ends.\\n"
+                        "Check your while loops: make sure the condition can eventually become False,\\n"
+                        "or that you have a break statement inside."
+                    )
     return _watch
 
 sys.settrace(_watch)
@@ -1203,11 +1211,14 @@ finally:
     sys.settrace(None)
 `);
   }catch(err){
-    const {text,line}=formatTraceback(String(err));
-    appendOut(text+'\n','err');
-    highlightErrLine(line);
-    setStatus('error','Error');
-    running=false;
+    const raw=String(err);
+    if(!raw.includes('__STOPPED__')){
+      const {text,line}=formatTraceback(raw);
+      appendOut(text+'\n','err');
+      highlightErrLine(line);
+      setStatus('error','Error');
+    }
+    running=false; pyRunning=false;
     setRunBtnState(false);
     const inp=outBody.querySelector('.inline-inp');
     if(inp) inp.remove();
@@ -1216,9 +1227,9 @@ finally:
 
   if(running){
     setStatus('ready','Done');
-    running=false;
-    setRunBtnState(false);
   }
+  running=false; pyRunning=false;
+  setRunBtnState(false);
 }
 
 // ── Share code (teacher mode) ─────────────────────────────────────────────────
